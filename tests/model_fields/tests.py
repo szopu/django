@@ -2,13 +2,15 @@
 from __future__ import unicode_literals
 
 import datetime
+import functools
 import unittest
 from decimal import Decimal
-
+from tempfile import NamedTemporaryFile
 from django import forms, test
 from django.apps import apps
 from django.core import checks, validators
 from django.core.exceptions import ValidationError
+from django.core.files import File
 from django.db import IntegrityError, connection, models, transaction
 from django.db.models.fields import (
     NOT_PROVIDED, AutoField, BigIntegerField, BinaryField, BooleanField,
@@ -18,7 +20,7 @@ from django.db.models.fields import (
     PositiveSmallIntegerField, SlugField, SmallIntegerField, TextField,
     TimeField, URLField,
 )
-from django.db.models.fields.files import FileField, ImageField
+from django.db.models.fields.files import FieldFile, FileField, ImageField
 from django.test.utils import requires_tz_support
 from django.utils import six, timezone
 from django.utils.encoding import force_str
@@ -754,6 +756,45 @@ class FileFieldTests(unittest.TestCase):
         field = d._meta.get_field('myfile')
         field.save_form_data(d, 'else.txt')
         self.assertEqual(d.myfile, 'else.txt')
+
+    def test_changed_file(self):
+        with NamedTemporaryFile() as _f1:
+            with NamedTemporaryFile() as _f2:
+                d = Document()
+                d.myfile = _f1.name
+                self.assertIsInstance(d.myfile, FieldFile)
+                self.assertEqual(d.myfile.name, _f1.name)
+                old_file = d.myfile
+                d.myfile = File(_f2)
+                self.assertIsInstance(d.myfile, FieldFile)
+                self.assertEqual(d.myfile.name, _f2.name)
+                self.assertIsNot(old_file, d.myfile)
+
+    def test_changed_file_native(self):
+        with NamedTemporaryFile() as _f1:
+            with NamedTemporaryFile() as _f2:
+                d = Document()
+                d.myfile = _f1.name
+                self.assertIsInstance(d.myfile, FieldFile)
+                self.assertEqual(d.myfile.name, _f1.name)
+                old_file = d.myfile
+                d.myfile = _f2
+                self.assertIsInstance(d.myfile, FieldFile)
+                self.assertEqual(d.myfile.name, _f2.name)
+                self.assertIsNot(old_file, d.myfile)
+
+    def test_unchanged_file(self):
+        with NamedTemporaryFile() as _f1:
+            with NamedTemporaryFile() as _f2:
+                d = Document()
+                d.myfile = _f1.name
+                self.assertIsInstance(d.myfile, FieldFile)
+                self.assertEqual(d.myfile.name, _f1.name)
+                old_file = d.myfile
+                d.myfile = File(_f2)
+                self.assertIsInstance(d.myfile, FieldFile)
+                self.assertEqual(d.myfile.name, _f2.name)
+                self.assertIsNot(old_file, d.myfile)
 
     def test_delete_when_file_unset(self):
         """
