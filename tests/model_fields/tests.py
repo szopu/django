@@ -2,13 +2,14 @@
 from __future__ import unicode_literals
 
 import datetime
+import os.path
 import unittest
 from decimal import Decimal
-
 from django import forms, test
 from django.apps import apps
 from django.core import checks, validators
 from django.core.exceptions import ValidationError
+from django.core.files import File
 from django.db import IntegrityError, connection, models, transaction
 from django.db.models.fields import (
     NOT_PROVIDED, AutoField, BigIntegerField, BinaryField, BooleanField,
@@ -18,7 +19,7 @@ from django.db.models.fields import (
     PositiveSmallIntegerField, SlugField, SmallIntegerField, TextField,
     TimeField, URLField,
 )
-from django.db.models.fields.files import FileField, ImageField
+from django.db.models.fields.files import FieldFile, FileField, ImageField
 from django.test.utils import requires_tz_support
 from django.utils import six, timezone
 from django.utils.encoding import force_str
@@ -754,6 +755,43 @@ class FileFieldTests(unittest.TestCase):
         field = d._meta.get_field('myfile')
         field.save_form_data(d, 'else.txt')
         self.assertEqual(d.myfile, 'else.txt')
+
+    def test_changed_file(self):
+        dirname = os.path.dirname(__file__)
+        f1_name = os.path.join(dirname, '4x4.png')
+        f2_name = os.path.join(dirname, '8x4.png')
+        f2 = open(f2_name, 'rb')
+        d = Document()
+        d.myfile = f1_name
+        self.assertIsInstance(d.myfile, FieldFile)
+        self.assertEqual(d.myfile.name, f1_name)
+        old_file = d.myfile
+        d.myfile = File(f2)
+        self.assertIsInstance(d.myfile, FieldFile)
+        self.assertEqual(d.myfile.name, f2_name)
+        self.assertIsNot(old_file, d.myfile)
+        f2.close()
+
+    def test_unchanged_fieldfile(self):
+        dirname = os.path.dirname(__file__)
+        f1_name = os.path.join(dirname, '4x8.png')
+        f2_name = os.path.join(dirname, '8x4.png')
+        f1 = File(open(f1_name, 'rb'))
+        d = Document()
+        d.myfile = f1
+        self.assertIsInstance(d.myfile, FieldFile)
+        self.assertEqual(d.myfile.name, f1_name)
+        old_file = d.myfile
+        f2 = File(open(f2_name, 'rb'))
+        new_file = d.myfile
+        new_file.file = f2
+        new_file.name = f2.name
+        d.myfile = new_file
+        self.assertIsInstance(d.myfile, FieldFile)
+        self.assertEqual(d.myfile.name, f2_name)
+        self.assertEqual(old_file.name, f1_name)
+        f1.close()
+        f2.close()
 
     def test_delete_when_file_unset(self):
         """
